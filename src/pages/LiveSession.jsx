@@ -21,6 +21,15 @@ function buildRtcConfiguration() {
       // ignore invalid JSON
     }
   }
+
+  // Allow simple TURN configuration via env vars without requiring JSON editing.
+  const turnUrl = import.meta.env.VITE_TURN_URL;
+  const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+  const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
+  if (turnUrl && turnUsername && turnCredential) {
+    iceServers = [...iceServers, { urls: turnUrl, username: turnUsername, credential: turnCredential }];
+  }
+
   return {
     iceServers,
     iceCandidatePoolSize: 10,
@@ -126,6 +135,7 @@ export default function LiveSession() {
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteStreamRef = useRef(new MediaStream());
   const peerRef = useRef(null);
   const localStreamRef = useRef(null);
   const pollTimerRef = useRef(null);
@@ -214,10 +224,16 @@ export default function LiveSession() {
 
     pc.ontrack = (event) => {
       const [stream] = event.streams;
-      if (remoteVideoRef.current && stream) {
+      if (!remoteVideoRef.current) return;
+
+      if (stream) {
         remoteVideoRef.current.srcObject = stream;
-        remoteVideoRef.current.play().catch(() => {});
+      } else {
+        // Some browsers send track events without an attached stream.
+        remoteStreamRef.current.addTrack(event.track);
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
+      remoteVideoRef.current.play().catch(() => {});
     };
 
     const stream = await acquireLocalMedia();
@@ -406,6 +422,7 @@ export default function LiveSession() {
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
     }
+    remoteStreamRef.current = new MediaStream();
     setConnectionState('closed');
     setIceConnectionState('closed');
     setIceGatheringState('complete');
