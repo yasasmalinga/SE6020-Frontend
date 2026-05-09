@@ -143,6 +143,7 @@ export default function LiveSession() {
   const addedCandidatesRef = useRef(new Set());
   const isOffererRef = useRef(false);
   const roleRef = useRef(user?.profile_type || 'candidate');
+  const didAttemptIceRestartRef = useRef(false);
 
   useEffect(() => {
     sessionIdRef.current = sessionId;
@@ -198,6 +199,21 @@ export default function LiveSession() {
 
     pc.oniceconnectionstatechange = () => {
       setIceConnectionState(pc.iceConnectionState);
+      if (pc.iceConnectionState === 'failed') {
+        setStatus('Connection failed');
+        setError(
+          'ICE failed. Add a TURN server in frontend/.env (VITE_TURN_URL, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL).'
+        );
+        // Try one ICE restart; useful when network path changed mid-call.
+        if (!didAttemptIceRestartRef.current) {
+          didAttemptIceRestartRef.current = true;
+          try {
+            pc.restartIce();
+          } catch {
+            // Ignore unsupported/failed restart.
+          }
+        }
+      }
     };
 
     pc.onicegatheringstatechange = () => {
@@ -416,6 +432,7 @@ export default function LiveSession() {
     }
     addedCandidatesRef.current.clear();
     isOffererRef.current = false;
+    didAttemptIceRestartRef.current = false;
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
     }
